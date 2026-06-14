@@ -109,6 +109,10 @@ anggira/
 
 Every gradient, every matrix multiplication, every attention score is computed with raw NumPy. This project exists to learn, not to ship.
 
+## Acknowledgments
+
+Built as part of the [AI Engineering from Scratch](https://github.com/rohitg00/ai-engineering-from-scratch) curriculum — 503 lessons, 20 phases, ~320 hours of building AI systems from raw math. Every algorithm implemented from first principles before frameworks.
+
 ## License
 
 MIT
