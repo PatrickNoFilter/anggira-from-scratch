@@ -20,3 +20,14 @@ id_vocab.pkl
 
 # Logs
 *.log
+
+# Temp/debug scripts (underscore-prefixed)
+_*.py
+
+# Shell temp scripts
+_run_*.sh
+_create_*.sh
+
+# IDE
+.codegraph/
+.vscode/
