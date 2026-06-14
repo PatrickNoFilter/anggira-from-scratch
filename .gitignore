@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Data (too large for git)
+*.npy
+*.pkl
+*.bak
+data/
+
+# Checkpoints
+checkpoint.pkl
+*_checkpoint.pkl
+
+# Symlinks
+id_tokens.npy
+id_vocab.pkl
+
+# Logs
+*.log
