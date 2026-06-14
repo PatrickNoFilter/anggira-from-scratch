@@ -12,7 +12,7 @@ Each phase: burst of 12 steps, auto-resumes from checkpoint.
 import sys, os, json, pickle, time
 import numpy as np
 
-os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'  # Optimal: threading overhead hurts at dim=144
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 os.environ['NUMEXPR_NUM_THREADS'] = '1'
@@ -25,9 +25,9 @@ np.random.seed(42)
 DIM = 144
 NUM_HEADS = 6
 NUM_LAYERS = 5
-MAX_SEQ_LEN = 512
+MAX_SEQ_LEN = 512  # Model capacity - kept large for position embeddings
 FF_DIM = 576
-SEQ_LEN = 512
+SEQ_LEN = 512  # Default, overridden per phase
 BATCH_SIZE = 2
 BURST = 12
 LOG_EVERY = 3
@@ -206,6 +206,15 @@ def get_corpus_tokens(phase_config):
 arr = get_corpus_tokens(phase)
 print(f"📚  Training tokens: {len(arr):,}")
 
+# ── Phase-aware context length ─────────────────────────────────
+def get_phase_seq_len(phase_config):
+    """Get the sequence length for the current phase from config."""
+    return phase_config.get('max_seq_len', MAX_SEQ_LEN)
+
+phase_seq_len = get_phase_seq_len(phase)
+speedup_estimate = (MAX_SEQ_LEN / phase_seq_len) ** 2
+print(f"📏  Phase context: T={phase_seq_len} (attention speedup: {speedup_estimate:.1f}x vs T={MAX_SEQ_LEN})")
+
 # ── Training burst ─────────────────────────────────────────────
 print(f"\n🏋️  Training burst of {BURST} steps (continues at step {total_steps})...")
 t0 = time.time()
@@ -222,10 +231,13 @@ for step in range(BURST):
             phase = phases[current_phase]
             lr = phase['lr']
             arr = get_corpus_tokens(phase)
+            phase_seq_len = get_phase_seq_len(phase)
+            speedup_estimate = (MAX_SEQ_LEN / phase_seq_len) ** 2
             print(f"\n🎯  Transitioning to Phase {current_phase + 1}: {phase['name']}")
             print(f"   Corpus: {phase['corpus']}")
             print(f"   Learning rate: {lr}")
             print(f"   Mix ratio: {phase.get('mix_ratio', 1.0)}")
+            print(f"   📏 Context: T={phase_seq_len} (attention speedup: {speedup_estimate:.1f}x)")
 
     # LR schedule: linear warmup only on fresh start, constant LR when pretrained
     if cur_step < LR_WARMUP and best_loss == float('inf'):
@@ -233,11 +245,11 @@ for step in range(BURST):
     else:
         optimizer.lr = lr
 
-    # Vectorized batch sampling
-    max_idx = max(1, len(arr) - SEQ_LEN - 1)
+    # Vectorized batch sampling — use phase-specific context length
+    max_idx = max(1, len(arr) - phase_seq_len - 1)
     indices = np.random.randint(0, max_idx, size=BATCH_SIZE)
-    inp = np.stack([arr[i:i + SEQ_LEN] for i in indices], axis=0)
-    tgt = np.stack([arr[i + 1:i + SEQ_LEN + 1] for i in indices], axis=0)
+    inp = np.stack([arr[i:i + phase_seq_len] for i in indices], axis=0)
+    tgt = np.stack([arr[i + 1:i + phase_seq_len + 1] for i in indices], axis=0)
 
     loss = model.train_step(inp, tgt, optimizer)
     losses.append(loss)
@@ -286,8 +298,8 @@ prompts = [
 model.training = False
 for prompt in prompts:
     pids = tok.encode(prompt, bos=True)
-    if len(pids) > SEQ_LEN - 10:
-        pids = pids[:SEQ_LEN - 10]
+    if len(pids) > phase_seq_len - 10:
+        pids = pids[:phase_seq_len - 10]
     
     out = model.generate(np.array(pids, dtype=np.int32), max_new=20, temp=0.9, top_k=30)
     
